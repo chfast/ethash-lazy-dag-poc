@@ -17,15 +17,20 @@ cache_item create(size_t index)
 	cache_item item;
 	for (size_t i = 0; i < item.w.size(); ++i)
 		item.w[i] = index + i + 17;
-	std::this_thread::sleep_for(std::chrono::microseconds(10));
+//	std::this_thread::sleep_for(std::chrono::microseconds(1));
 	return item;
 }
 
 void validate(size_t index, const cache_item& item)
 {
 	for (size_t i = 0; i < item.w.size(); ++i)
+	{
 		if (item.w[i] != index + i + 17)
-			throw 0;
+		{
+			std::cerr << "Index: " << index << " flag: " << item.w[0] << "\n";
+			throw short(1);
+		}
+	}
 }
 
 uint64_t hash(const cache_item& item)
@@ -69,26 +74,21 @@ struct partial_atomic_item
 	{
 		uint64_t f = flag.load(std::memory_order_acquire);
 
-		uint64_t no_init = 0;
-		bool spin = f == 1;
-		if (f == no_init)
+		if (f == 0)
 		{
-			if (flag.compare_exchange_strong(no_init, 1, std::memory_order_acq_rel))
+			if (flag.compare_exchange_strong(f, 1, std::memory_order_acq_rel))
 			{
 				auto item = create(index);
 
 				for (size_t i = 0; i < data.size(); ++i)
 					data[i] = item.w[i + 1];
-				if (flag != 1)
-					throw unsigned(1);
 				flag.store(item.w[0], std::memory_order_release);
 				return item;
 			}
-			spin = no_init == 1;
 		}
 
-		if (spin)
-			while ((f = flag.load(std::memory_order_acquire)) == 1) {}
+		while (f == 1)
+			f = flag.load(std::memory_order_acquire);
 
 		cache_item item;
 		item.w[0] = f;
@@ -109,12 +109,12 @@ int main(int argc, const char* argv[])
 	if (argc >= 2)
 		t = std::stoul(argv[1]);
 
-	size_t global_iterations = 50000000;
+	size_t global_iterations = 100000000;
 	if (argc >= 3)
 		global_iterations = std::stoul(argv[2]);
 
 
-	constexpr size_t cache_size = size_t(3) * 1024;
+	constexpr size_t cache_size = size_t(1) * 1024 * 1024 * 1024;
 	constexpr size_t n = cache_size / sizeof(cache_item);
 	size_t k = global_iterations / t;
 
