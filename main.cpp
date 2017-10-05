@@ -72,19 +72,15 @@ struct partial_atomic_item
 
 	cache_item lazy_load(size_t index)
 	{
-		uint64_t f = flag.load(std::memory_order_acquire);
-
-		if (f == 0)
+		uint64_t f = 0;
+		if (flag.compare_exchange_strong(f, 1, std::memory_order_acq_rel))
 		{
-			if (flag.compare_exchange_strong(f, 1, std::memory_order_acq_rel))
-			{
-				auto item = create(index);
+			auto item = create(index);
 
-				for (size_t i = 0; i < data.size(); ++i)
-					data[i] = item.w[i + 1];
-				flag.store(item.w[0], std::memory_order_release);
-				return item;
-			}
+			for (size_t i = 0; i < data.size(); ++i)
+				data[i] = item.w[i + 1];
+			flag.store(item.w[0], std::memory_order_release);
+			return item;
 		}
 
 		while (f == 1)
