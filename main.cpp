@@ -72,8 +72,15 @@ struct partial_atomic_item
 
 	cache_item lazy_load(size_t index)
 	{
-		uint64_t f = 0;
-		if (flag.compare_exchange_strong(f, 1, std::memory_order_acq_rel))
+		// The following load is not needed for correctness, because
+		// compare_exchange_strong() will do the check for `flag == 0`,
+		// but this way the load() in on the hot path and
+		// compare_exchange_strong() is not.
+		// From benchmarks this makes it up to ~15% faster and it matches
+		// the performance of the version with relaxed memory ordering.
+		uint64_t f = flag.load(std::memory_order_acquire);
+
+		if (f == 0 && flag.compare_exchange_strong(f, 1, std::memory_order_relaxed))
 		{
 			auto item = create(index);
 
@@ -105,7 +112,7 @@ int main(int argc, const char* argv[])
 	if (argc >= 2)
 		t = std::stoul(argv[1]);
 
-	size_t global_iterations = 100000000;
+	size_t global_iterations = 1000000000;
 	if (argc >= 3)
 		global_iterations = std::stoul(argv[2]);
 
